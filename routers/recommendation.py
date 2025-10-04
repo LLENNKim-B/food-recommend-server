@@ -1,15 +1,16 @@
 # routers/recommendation.py
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 import os
 from scipy.sparse.linalg import svds
-from scipy import sparse
 import pandas as pd
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from surprise import Dataset, Reader, SVD
-from surprise.model_selection import train_test_split
 import pyodbc
 from datetime import datetime
+from database import get_db_connection
+router = APIRouter()
+
 # ==============================
 # 1. เชื่อม SQL Server
 # ==============================
@@ -141,7 +142,7 @@ def filter_by_health_constraints(user_id, df_final, df_menu_lookup):
     return df_filtered[["food_id"]]
 
 # ==============================
-# 5. ฟังก์ชัน Recommendation
+# 5. Content-Based Recommendation
 # ==============================
 def content_based_recommend(user_id, top_n=5):
     user_df = users[users['user_id'] == user_id]
@@ -212,43 +213,71 @@ def content_based_recommend(user_id, top_n=5):
 
     return result
 
+# ==============================
+# 6. Collaborative Recommendation (ใช้ SVD ของ SciPy)
+# ==============================
 def collaborative_recommend(user_id, top_n=5, include_eaten=True):
     if user_ratings.empty:
         return pd.DataFrame()
 
-    reader = Reader(rating_scale=(1, 10))
-    data = Dataset.load_from_df(user_ratings[['user_id', 'food_id', 'rating']], reader)
-    trainset = data.build_full_trainset()
-    algo = SVD(random_state=42)
-    algo.fit(trainset)
+    # จัดการกรณี duplicate
+    ratings_matrix = user_ratings.groupby(['user_id','food_id'])['rating'].mean().unstack(fill_value=0)
+    
+    user_ids = ratings_matrix.index.tolist()
+    food_ids = ratings_matrix.columns.tolist()
+    R = ratings_matrix.values
+
+    # Centering
+    user_ratings_mean = np.mean(R, axis=1).reshape(-1,1)
+    R_demeaned = R - user_ratings_mean
+
+    # SVD
+    U, sigma, Vt = svds(R_demeaned, k=min(20, min(R.shape)-1))
+    sigma = np.diag(sigma)
+    R_pred = np.dot(np.dot(U, sigma), Vt) + user_ratings_mean
+
+    pred_df = pd.DataFrame(R_pred, index=user_ids, columns=food_ids)
+
+    if user_id not in pred_df.index:
+        return pd.DataFrame()
 
     allowed_foods = set(filter_by_health_constraints(user_id, df_final, menu_lookup)["food_id"].unique())
-    all_foods = set(menu_lookup['food_id'].unique())
     eaten_foods = set(user_ratings[user_ratings['user_id'] == user_id]['food_id'].unique())
 
     if include_eaten:
-        candidate_foods = sorted(list(all_foods & allowed_foods))
+        candidate_foods = list(allowed_foods)
     else:
-        candidate_foods = sorted(list((all_foods - eaten_foods) & allowed_foods))
+        candidate_foods = list(allowed_foods - eaten_foods)
 
-    if not candidate_foods:
+    # ✅ กรองให้เฉพาะ food_ids ที่ pred_df มี
+    candidate_foods_in_pred = [f for f in candidate_foods if f in pred_df.columns]
+    if not candidate_foods_in_pred:
         return pd.DataFrame()
 
-    predictions = [algo.predict(user_id, fid) for fid in candidate_foods]
-    predictions.sort(key=lambda x: x.est, reverse=True)
+    pred_scores = pred_df.loc[user_id, candidate_foods_in_pred].sort_values(ascending=False)
+    top_food_ids = pred_scores.head(top_n).index.tolist()
 
-    top_pred = predictions[:top_n]
-    food_ids = [int(pred.iid) for pred in top_pred]
 
-    result = menu_lookup[menu_lookup['food_id'].isin(food_ids)][
+    result = menu_lookup[menu_lookup['food_id'].isin(top_food_ids)][
         ["food_id", "food_name", "calories", "protein", "carbs", "fat", "sugar"]
     ]
-    result['pred_score'] = [pred.est for pred in top_pred]
-    result = result.set_index('food_id').reindex(food_ids).reset_index()
+    result['pred_score'] = pred_scores[top_food_ids].values
+    result = result.set_index('food_id').reindex(top_food_ids).reset_index()
 
     return result
 
+# ==============================
+# 7. Hybrid Recommendation
+# ==============================
 def hybrid_recommend(user_id, top_n=5, alpha=0.5):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT 1 FROM User_2 WHERE user_id = ?", user_id)
+    row = cursor.fetchone()
+    if(not row):
+        # print("Hello world")
+        return [{"message": "เอ๋อ"}];
     content_rec = content_based_recommend(user_id, top_n=20)
     collab_rec = collaborative_recommend(user_id, top_n=20)
 
@@ -271,7 +300,17 @@ def hybrid_recommend(user_id, top_n=5, alpha=0.5):
         ["food_id","food_name", "calories", "protein", "carbs", "fat","sugar",'sodium']
     ]
 
-
+# ==============================
+# 8. API Endpoint
+# ==============================
 @router.get("/recommend/{user_id}")
 async def get_recommendation(user_id: int, top_n: int = 5):
-    return {"Hello world":"Message"}
+    hybrid = hybrid_recommend(user_id, top_n=top_n)
+    
+    # ถ้า hybrid เป็น DataFrame
+    if isinstance(hybrid, pd.DataFrame):
+        hybrid = hybrid.fillna(0)
+        return hybrid.to_dict(orient='records')
+    else:
+        # กรณี return list ของ dict
+        return hybrid
