@@ -1,0 +1,12 @@
+disease,avoid_nutrients,avoid_ingredients,note
+diabetes,sugar,no,Avoid high sugar
+hypertension,sodium,no,Avoid high sodium
+gout,no,beans,Avoid beans and organ meats
+obesity,calories,fat,Avoid high calories and fat
+kidney,sodium,potassium,"Avoid high sodium, potassium, and protein"
+dyslipidemia,fat,cholesterol,Avoid high fat and cholesterol
+heart_disease,saturated_fat,cholesterol,Avoid saturated fat and cholesterol
+celiac,no,gluten,Avoid gluten
+lactose_intolerance,no,milk,Avoid milk and dairy products
+anemia,no,tea,Avoid tea and coffee
+hyperuricemia,no,beans,Avoid beans and organ meats
