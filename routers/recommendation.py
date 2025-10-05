@@ -9,17 +9,14 @@ from sklearn.metrics.pairwise import cosine_similarity
 import pyodbc
 from datetime import datetime
 from database import get_db_connection
+from auth import verify_token
+
 router = APIRouter()
 
 # ==============================
 # 1. เชื่อม SQL Server
 # ==============================
-conn = pyodbc.connect(
-    "Driver={ODBC Driver 17 for SQL Server};"
-    "Server=LAPTOP-HJRRM85F;"
-    "Database=FoodRecommendDB;"
-    "Trusted_Connection=yes;"
-)
+conn = get_db_connection()
 cursor = conn.cursor()
 
 # ==============================

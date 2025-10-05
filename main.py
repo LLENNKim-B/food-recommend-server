@@ -1,7 +1,7 @@
 # main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import recommendation
+from routers import recommendation,users
 app = FastAPI()
 
 origins = ["*"]
@@ -15,6 +15,7 @@ app.add_middleware(
 )
 
 # include router
+app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(recommendation.router, prefix="/recommendation", tags=["recommendation"])
 
 @app.get("/")
