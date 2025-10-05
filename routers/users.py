@@ -100,7 +100,7 @@ async def register_user(user: User):
         raise HTTPException(status_code=400, detail="Email already registered")
     hashed_password = hashpw(user.password.encode('utf-8'), gensalt())
     cursor.execute(
-        "INSERT INTO user_2 (username, email, password,birthdate,gender,height,weight,diet_type,Disease) VALUES (?, ?, ?)",
+        "INSERT INTO user_2 (username, email, password,birthdate,gender,height,weight,diet_type,Disease) VALUES (?, ?, ?,?, ?, ?,?, ?, ?)",
         (user.username, user.email, hashed_password.decode('utf-8'),user.birthdate,user.gender,user.height,user.weight,user.diet_type,user.disease)
     )
     conn.commit()
