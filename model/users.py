@@ -10,3 +10,8 @@ class User(BaseModel):
     weight: float
     diet_type: str
     disease: str = None
+    activity_id :int
+
+class UserLogin(BaseModel):
+    email: str
+    password: str

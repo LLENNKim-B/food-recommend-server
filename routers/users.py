@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from database import get_db_connection
 from bcrypt import hashpw,checkpw,gensalt
-from model.users import User
+from model.users import User,UserLogin
 import secrets
 from datetime import datetime
 from auth import verify_token
@@ -51,15 +51,15 @@ async def read_user(user_id: int):
     }
 
 @router.post("/login")
-async def login_user(email: str, password: str):
+async def login_user(userlogin: UserLogin):
     conn = get_db_connection()
     cursor = conn.cursor()
 
     # ตรวจสอบอีเมลในระบบ
-    cursor.execute("SELECT user_id, username, email, password FROM user_2 WHERE email = ?", (email,))
+    cursor.execute("SELECT user_id, username, email, password FROM user_2 WHERE email = ?", (userlogin.email,))
     record = cursor.fetchone()
 
-    if record is None or not checkpw(password.encode('utf-8'), record[3].encode('utf-8')):
+    if record is None or not checkpw(userlogin.password.encode('utf-8'), record[3].encode('utf-8')):
         conn.close()
         raise HTTPException(status_code=400, detail="Invalid email or password")
 
@@ -99,9 +99,14 @@ async def register_user(user: User):
         conn.close()
         raise HTTPException(status_code=400, detail="Email already registered")
     hashed_password = hashpw(user.password.encode('utf-8'), gensalt())
+    print(f'hashed_password {hashed_password}')
+    print(f'user info {user}')
+    print(f"""
+INSERT INTO user_2 (username, email, password,birthdate,gender,height,weight,diet_type,Disease,activity_id) VALUES ({user.username}, {user.email}, {hashed_password.decode('utf-8')},{user.birthdate},{user.gender},{user.height},{user.weight},{user.diet_type},{user.disease},{user.activity_id})
+""")
     cursor.execute(
-        "INSERT INTO user_2 (username, email, password,birthdate,gender,height,weight,diet_type,Disease) VALUES (?, ?, ?,?, ?, ?,?, ?, ?)",
-        (user.username, user.email, hashed_password.decode('utf-8'),user.birthdate,user.gender,user.height,user.weight,user.diet_type,user.disease)
+        "INSERT INTO user_2 (username, email, password,birthdate,gender,height,weight,diet_type,Disease,activity_id) VALUES (?, ?, ?,?, ?, ?,?, ?, ?, ?)",
+        (user.username, user.email, hashed_password.decode('utf-8'),user.birthdate,user.gender,user.height,user.weight,user.diet_type,user.disease,user.activity_id)
     )
     conn.commit()
     cursor.close()
